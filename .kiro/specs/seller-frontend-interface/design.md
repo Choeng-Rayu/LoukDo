@@ -1,38 +1,118 @@
-# Design Document
+# Design Document: Seller Frontend Interface
 
 ## Introduction
 
-The Seller Frontend Interface is a comprehensive web application that provides sellers with a complete dashboard to manage their e-commerce operations. This design document outlines the technical architecture, user interface design, and system integration patterns that will deliver a responsive, secure, and intuitive seller experience.
+The Seller Frontend Interface is part of a unified Next.js application that provides role-based interfaces for all user types (customer, seller, super_admin). This design document outlines the seller-specific interface patterns, routing structure, and components within the unified architecture that delivers a responsive, secure, and intuitive seller experience.
 
-## System Architecture
+## Unified Architecture Overview
 
-### High-Level Architecture
+## Unified Architecture Overview
 
-The seller frontend follows a modern web application architecture with clear separation of concerns:
+### Next.js 14+ Unified Application Architecture
 
+The seller interface is implemented within a unified Next.js 14+ application using the App Router architecture. The application dynamically renders different interfaces based on authenticated user roles through middleware and role-based routing:
+
+```mermaid
+graph TB
+    subgraph "Next.js 14+ Unified Application"
+        A[App Router] --> B[Middleware Layer]
+        B --> C[Role Detection]
+        C --> D["(customer) Routes"]
+        C --> E["/seller Routes"]
+        C --> F["/admin Routes"]
+        
+        E --> G[Seller Pages]
+        E --> H[Shared Components]
+        
+        G --> I[Dashboard]
+        G --> J[Product Management]
+        G --> K[Order Management]
+        G --> L[Analytics]
+        
+        H --> M[Authentication]
+        H --> N[Navigation]
+        H --> O[Forms]
+        H --> P[UI Elements]
+    end
+    
+    Q[Unified Backend API] --> A
+    R[CDN/Static Assets] --> A
+    S[Zustand Store] --> A
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Seller UI     │    │   API Gateway   │    │   Backend       │
-│   (Frontend)    │◄──►│   (Middleware)  │◄──►│   Services      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Browser       │    │   Load Balancer │    │   Database      │
-│   Storage       │    │   & Security    │    │   Layer         │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+### Next.js App Router Structure for Sellers
+
+The seller interface follows Next.js 14+ App Router conventions with protected seller routes:
+
+```mermaid
+graph LR
+    subgraph "App Router Structure"
+        A[app/] --> B["(customer)/"]
+        A --> C[seller/]
+        A --> D[admin/]
+        
+        C --> E[layout.tsx - Seller Layout]
+        C --> F[page.tsx - Dashboard]
+        C --> G[products/]
+        C --> H[orders/]
+        C --> I[analytics/]
+        C --> J[profile/]
+        
+        G --> K[page.tsx - Product List]
+        G --> L[new/page.tsx - Add Product]
+        G --> M["[id]/page.tsx - Edit Product"]
+        
+        H --> N[page.tsx - Order List]
+        H --> O["[id]/page.tsx - Order Detail"]
+    end
+    
+    subgraph "Shared Components"
+        P[components/ui/] --> Q[Button, Input, Modal]
+        P --> R[components/seller/]
+        P --> S[components/shared/]
+        
+        R --> T[ProductForm, OrderCard]
+        S --> U[Header, Footer, Navigation]
+    end
+    
+    A --> P
+```
+
+The seller interface is integrated within a single Next.js application with role-based routing and shared components:
+
+```mermaid
+graph TD
+    A[Next.js App] --> B[App Router]
+    B --> C[Customer Routes /]
+    B --> D[Seller Routes /seller/*]
+    B --> E[Admin Routes /admin/*]
+    
+    D --> F[Seller Dashboard]
+    D --> G[Product Management]
+    D --> H[Order Management]
+    D --> I[Analytics]
+    
+    F --> J[Shared Components]
+    G --> J
+    H --> J
+    I --> J
+    
+    J --> K[Unified State Store]
+    J --> L[Unified API Client]
+    
+    L --> M[NestJS Backend API]
+    K --> N[Role-Based Data]
 ```
 
 ### Component Architecture
 
-The frontend application is structured using a modular component-based architecture:
+The seller interface leverages a unified component architecture with role-based variations:
 
-- **Authentication Module**: Handles login, registration, and session management
-- **Dashboard Module**: Provides overview and navigation hub
-- **Product Management Module**: Manages product CRUD operations
-- **Order Management Module**: Handles order viewing and status updates
-- **Analytics Module**: Displays sales reports and performance metrics
-- **Profile Module**: Manages seller account and business information
+- **Shared Layout System**: Common header, navigation, and layout components with seller-specific styling
+- **Role-Based Routing**: Next.js App Router with `/seller/*` routes protected by middleware
+- **Unified State Management**: Single Zustand store with seller-specific data sections
+- **Shared Component Library**: Reusable UI components with role-based props and styling
+- **Authentication Integration**: NextAuth.js or custom JWT handling with role validation
 
 ## User Interface Design
 
@@ -92,48 +172,238 @@ The frontend application is structured using a modular component-based architect
 ### Frontend Technology Stack
 
 #### Core Framework
-- **React 18+**: Component-based UI library with hooks and concurrent features
+- **Next.js 14+**: React framework with App Router for role-based routing
 - **TypeScript**: Type-safe JavaScript for better development experience
-- **Vite**: Fast build tool and development server
+- **React 18+**: Component-based UI library with concurrent features
 
 #### State Management
-- **Zustand**: Lightweight state management for global application state
-- **React Query (TanStack Query)**: Server state management and caching
+- **Zustand**: Lightweight state management for unified application state
+- **TanStack Query (React Query)**: Server state management and caching
 - **React Hook Form**: Form state management with validation
 
 #### Styling and UI
 - **Tailwind CSS**: Utility-first CSS framework for rapid UI development
-- **Headless UI**: Unstyled, accessible UI components
-- **React Icons**: Comprehensive icon library
+- **Headless UI** or **shadcn/ui**: Unstyled, accessible UI components
+- **Lucide React**: Modern icon library
 
-#### Routing and Navigation
-- **React Router v6**: Client-side routing with nested routes
-- **Protected Routes**: Authentication-based route protection
+#### Authentication and Routing
+- **NextAuth.js** or **Custom JWT**: Authentication with role-based access control
+- **Next.js App Router**: File-based routing with role-specific route groups
+- **Next.js Middleware**: Route protection and role validation
+
+### Unified Architecture Implementation
+
+#### Next.js App Router Structure
+```
+src/app/
+├── (customer)/              # Customer routes (public)
+│   ├── page.tsx            # Home page
+│   ├── products/           # Product catalog
+│   └── cart/               # Shopping cart
+├── seller/                 # Seller routes (protected)
+│   ├── layout.tsx          # Seller-specific layout
+│   ├── page.tsx            # Seller dashboard
+│   ├── products/           # Product management
+│   │   ├── page.tsx        # Product list
+│   │   ├── new/            # Add product
+│   │   └── [id]/           # Edit product
+│   ├── orders/             # Order management
+│   │   ├── page.tsx        # Order list
+│   │   └── [id]/           # Order details
+│   ├── analytics/          # Sales analytics
+│   └── profile/            # Seller profile
+└── admin/                  # Admin routes (protected)
+    └── ...
+```
+
+#### Role-Based Layout System
+```typescript
+// src/app/seller/layout.tsx
+import { SellerNavigation } from '@/components/seller/SellerNavigation'
+import { RoleGuard } from '@/components/auth/RoleGuard'
+
+export default function SellerLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <RoleGuard allowedRoles={['seller']}>
+      <div className="min-h-screen bg-gray-50">
+        <SellerNavigation />
+        <main className="lg:pl-64">
+          <div className="px-4 sm:px-6 lg:px-8 py-8">
+            {children}
+          </div>
+        </main>
+      </div>
+    </RoleGuard>
+  )
+}
+```
+
+#### Unified State Management Structure
+```typescript
+// src/store/useAppStore.ts
+interface AppState {
+  // Authentication state (shared across all roles)
+  auth: {
+    user: User | null
+    role: 'customer' | 'seller' | 'super_admin' | null
+    permissions: string[]
+    isAuthenticated: boolean
+    isLoading: boolean
+  }
+  
+  // Seller-specific state
+  seller: {
+    products: {
+      items: Product[]
+      isLoading: boolean
+      error: string | null
+    }
+    orders: {
+      items: Order[]
+      isLoading: boolean
+      error: string | null
+    }
+    analytics: {
+      metrics: SellerMetrics
+      isLoading: boolean
+    }
+    profile: {
+      businessInfo: BusinessInfo | null
+      isLoading: boolean
+    }
+  }
+  
+  // Shared state (used by multiple roles)
+  shared: {
+    categories: Category[]
+    notifications: Notification[]
+  }
+  
+  // Actions
+  login: (credentials: LoginCredentials) => Promise<void>
+  logout: () => void
+  updateSellerProducts: (products: Product[]) => void
+  updateSellerOrders: (orders: Order[]) => void
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
+  auth: {
+    user: null,
+    role: null,
+    permissions: [],
+    isAuthenticated: false,
+    isLoading: false,
+  },
+  seller: {
+    products: { items: [], isLoading: false, error: null },
+    orders: { items: [], isLoading: false, error: null },
+    analytics: { metrics: null, isLoading: false },
+    profile: { businessInfo: null, isLoading: false },
+  },
+  shared: {
+    categories: [],
+    notifications: [],
+  },
+  // Actions implementation...
+}))
+```
 
 ### Authentication System Design
 
-#### Authentication Flow
-```mermaid
-sequenceDiagram
-    participant S as Seller
-    participant F as Frontend
-    participant A as Auth API
-    participant D as Database
+#### Next.js Middleware for Role Protection
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { verifyJWT } from '@/lib/auth'
 
-    S->>F: Enter credentials
-    F->>A: POST /auth/login
-    A->>D: Validate credentials
-    D-->>A: User data
-    A-->>F: JWT token + user info
-    F->>F: Store token in httpOnly cookie
-    F-->>S: Redirect to dashboard
+export async function middleware(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value
+  
+  // Protect seller routes
+  if (request.nextUrl.pathname.startsWith('/seller')) {
+    if (!token) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    
+    try {
+      const payload = await verifyJWT(token)
+      if (payload.role !== 'seller') {
+        return NextResponse.redirect(new URL('/unauthorized', request.url))
+      }
+    } catch (error) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+  }
+  
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/seller/:path*', '/admin/:path*']
+}
 ```
 
-#### Session Management
-- JWT tokens stored in httpOnly cookies for security
-- Automatic token refresh before expiration
-- Session timeout after 24 hours of inactivity
-- Secure logout with token invalidation
+#### Authentication Flow with NextAuth.js
+```typescript
+// src/lib/auth.ts
+import NextAuth from 'next-auth'
+import CredentialsProvider from 'next-auth/providers/credentials'
+
+export const authOptions = {
+  providers: [
+    CredentialsProvider({
+      name: 'credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' }
+      },
+      async authorize(credentials) {
+        const response = await fetch(`${process.env.API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(credentials),
+        })
+        
+        if (response.ok) {
+          const user = await response.json()
+          return {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            permissions: user.permissions,
+          }
+        }
+        return null
+      }
+    })
+  ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.role = user.role
+        token.permissions = user.permissions
+      }
+      return token
+    },
+    async session({ session, token }) {
+      session.user.role = token.role
+      session.user.permissions = token.permissions
+      return session
+    }
+  },
+  pages: {
+    signIn: '/login',
+    error: '/auth/error',
+  }
+}
+
+export default NextAuth(authOptions)
+```
 
 ### Data Management Design
 

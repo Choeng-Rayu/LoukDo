@@ -1,455 +1,595 @@
-# Design Document
+# Design Document: Customer Backend API (Unified Architecture)
 
 ## Overview
 
-The Customer Backend API is a comprehensive RESTful API system that serves as the backbone for all customer-facing operations in the multi-vendor e-commerce platform. This system provides secure, scalable, and performant backend services that enable customers to browse products, manage shopping carts, place orders, and track purchases across multiple sellers.
+The Customer Backend API represents the customer-facing portion of a unified NestJS backend application that serves all user types (customers, sellers, super_admin) in the multi-vendor e-commerce platform. This design implements role-based access control within a single application architecture, providing secure, scalable, and performant backend services for customer operations including product browsing, cart management, order placement, and purchase tracking.
 
-The API follows modern microservices architecture principles while maintaining data consistency and providing seamless integration with seller backend systems and admin oversight tools. The design emphasizes security, performance, and maintainability to support a growing marketplace with thousands of customers and sellers.
+The unified architecture eliminates the complexity of separate microservices while maintaining clear separation of concerns through NestJS modules, role-based guards, and service-layer filtering. This approach ensures data consistency, simplifies deployment, and provides seamless integration across all user types within the platform.
 
 ### Key Design Principles
 
-- **Security First**: All endpoints implement comprehensive authentication, authorization, and data protection
-- **Performance Optimized**: Sub-200ms response times for 95% of requests through caching and optimization
-- **Scalable Architecture**: Horizontal scaling support through stateless design and load balancing
-- **Data Integrity**: ACID transactions and foreign key constraints ensure consistent data state
-- **Integration Ready**: Event-driven communication with seller systems and admin tools
-- **Developer Friendly**: Comprehensive OpenAPI documentation and consistent error handling
+- **Unified Architecture**: Single NestJS application serving all user types with role-based access control
+- **Role-Based Security**: JWT tokens with role claims and NestJS guards for authorization
+- **Database Consistency**: Single MySQL database with TypeORM entities and role-based filtering
+- **Performance Optimized**: Sub-200ms response times through caching and query optimization
+- **Scalable Design**: Horizontal scaling support through stateless NestJS architecture
+- **Developer Experience**: TypeScript throughout with comprehensive OpenAPI documentation
+- **Container-Ready**: Docker development environment with MySQL containerization
 
 ## Architecture
 
-### System Architecture Overview
+### Unified NestJS Application Architecture
 
-The Customer Backend API follows a layered microservices architecture with clear separation of concerns:
+The Customer Backend API is implemented as part of a unified NestJS application that serves all user types through role-based access control:
 
 ```mermaid
 graph TB
     subgraph "Client Layer"
         CF[Customer Frontend]
-        MA[Mobile App]
-        TP[Third Party]
+        SF[Seller Frontend]
+        AF[Admin Frontend]
+        MA[Mobile Apps]
     end
     
-    subgraph "API Gateway Layer"
-        AG[API Gateway]
-        LB[Load Balancer]
-        RL[Rate Limiter]
+    subgraph "Unified NestJS Application"
+        AG[API Gateway/Guards]
+        
+        subgraph "Authentication Module"
+            AS[Auth Service]
+            JG[JWT Guard]
+            RG[Roles Guard]
+        end
+        
+        subgraph "Customer Module"
+            PC[Products Controller]
+            CC[Cart Controller]
+            OC[Orders Controller]
+            UC[Users Controller]
+        end
+        
+        subgraph "Shared Services"
+            PS[Product Service]
+            CS[Cart Service]
+            OS[Order Service]
+            US[User Service]
+            NS[Notification Service]
+        end
+        
+        subgraph "Data Access Layer"
+            PR[Product Repository]
+            CR[Cart Repository]
+            OR[Order Repository]
+            UR[User Repository]
+        end
     end
     
-    subgraph "Application Layer"
-        AS[Authentication Service]
-        PS[Product Service]
-        CS[Cart Service]
-        OS[Order Service]
-        US[User Service]
-        RS[Review Service]
-        WS[Wishlist Service]
-        NS[Notification Service]
-        SS[Search Service]
-        PYS[Payment Service]
-    end
-    
-    subgraph "Integration Layer"
-        IL[Integration Layer]
-        EQ[Event Queue]
-        SB[Seller Backend]
-        AB[Admin Backend]
-    end
-    
-    subgraph "Data Layer"
-        PG[(PostgreSQL)]
-        RD[(Redis Cache)]
-        ES[(Elasticsearch)]
-        FS[File Storage]
+    subgraph "Infrastructure"
+        subgraph "Database"
+            MY[(MySQL 8.0)]
+            DC[Docker Container]
+        end
+        
+        subgraph "Caching"
+            RD[(Redis Cache)]
+        end
+        
+        subgraph "External Services"
+            ES[Email Service]
+            PS[Payment Service]
+        end
     end
     
     CF --> AG
+    SF --> AG
+    AF --> AG
     MA --> AG
-    TP --> AG
     
-    AG --> LB
-    LB --> RL
-    RL --> AS
-    RL --> PS
-    RL --> CS
-    RL --> OS
-    RL --> US
-    RL --> RS
-    RL --> WS
-    RL --> NS
-    RL --> SS
-    RL --> PYS
+    AG --> JG
+    JG --> RG
+    RG --> PC
+    RG --> CC
+    RG --> OC
+    RG --> UC
     
-    AS --> PG
-    PS --> PG
-    PS --> ES
-    CS --> PG
+    PC --> PS
+    CC --> CS
+    OC --> OS
+    UC --> US
+    
+    PS --> PR
+    CS --> CR
+    OS --> OR
+    US --> UR
+    
+    PR --> MY
+    CR --> MY
+    OR --> MY
+    UR --> MY
+    
+    MY --> DC
+    
+    PS --> RD
     CS --> RD
-    OS --> PG
-    US --> PG
-    RS --> PG
-    WS --> PG
-    SS --> ES
-    PYS --> PG
     
-    PS --> IL
-    OS --> IL
-    IL --> EQ
-    EQ --> SB
-    EQ --> AB
-    
-    PS --> FS
+    NS --> ES
+    OS --> PS
 ```
 
-### Microservices Architecture
+### NestJS Module Structure
 
-#### Service Decomposition Strategy
+The unified application is organized into focused NestJS modules with clear separation of concerns:
 
-The system is decomposed into focused microservices based on business capabilities:
+```typescript
+// Application module structure
+@Module({
+  imports: [
+    // Core modules
+    ConfigModule.forRoot(),
+    TypeOrmModule.forRoot(databaseConfig),
+    
+    // Feature modules
+    AuthModule,
+    UsersModule,
+    ProductsModule,
+    CartModule,
+    OrdersModule,
+    NotificationModule,
+    
+    // Infrastructure modules
+    CacheModule,
+    LoggerModule
+  ]
+})
+export class AppModule {}
+```
 
-**Authentication Service**
-- Handles user registration, login, and session management
-- JWT token generation and validation
-- Password reset and email verification
-- Rate limiting and security monitoring
+### Role-Based Access Control Architecture
 
-**Product Service**
-- Product catalog management and retrieval
-- Category-based filtering and search
-- Product availability and pricing
-- Integration with seller product updates
-
-**Cart Service**
-- Shopping cart persistence and operations
-- Guest cart management with session tokens
-- Cart merging for user authentication
-- Real-time price and availability validation
-
-**Order Service**
-- Order placement and processing
-- Multi-seller order coordination
-- Order status tracking and history
-- Payment integration and confirmation
-
-**User Service**
-- Customer profile management
-- Address management and validation
-- User preferences and settings
-- Account security and privacy controls
-
-**Search Service**
-- Full-text product search with relevance scoring
-- Advanced filtering and sorting capabilities
-- Search analytics and optimization
-- Autocomplete and suggestion features
-
-**Review Service**
-- Product review and rating management
-- Purchase verification for review eligibility
-- Review moderation and content filtering
-- Aggregate rating calculations
-
-**Wishlist Service**
-- Product wishlist management
-- Wishlist sharing and collaboration
-- Availability notifications
-- Cart integration for saved items
-
-**Notification Service**
-- Email notification delivery
-- Template management and personalization
-- Delivery tracking and retry logic
-- Preference management and unsubscribe handling
-
-**Payment Service**
-- Cash on delivery processing
-- Online payment gateway integration
-- Transaction recording and reconciliation
-- Refund and chargeback handling
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant G as Guards
+    participant S as Service
+    participant R as Repository
+    participant DB as MySQL
+    
+    C->>G: Request with JWT
+    G->>G: Validate Token
+    G->>G: Check Role Permissions
+    G->>S: Authorized Request
+    S->>S: Apply Role-Based Filtering
+    S->>R: Query with Role Context
+    R->>DB: Execute Filtered Query
+    DB-->>R: Results
+    R-->>S: Filtered Data
+    S-->>G: Response
+    G-->>C: Final Response
+```
 
 ### Technology Stack
 
 #### Backend Framework
-- **Node.js with Express.js**: High-performance JavaScript runtime with mature ecosystem
-- **TypeScript**: Type safety and enhanced developer experience
-- **Helmet.js**: Security middleware for HTTP headers
-- **Compression**: Response compression for improved performance
+- **NestJS**: TypeScript-first framework with decorators and dependency injection
+- **TypeScript**: Full type safety throughout the application
+- **Passport.js**: Authentication middleware with JWT strategy
+- **Class Validator**: Decorator-based validation for DTOs
+- **Class Transformer**: Object transformation and serialization
 
 #### Database Technologies
-- **PostgreSQL 15+**: Primary relational database with ACID compliance
+- **MySQL 8.0+**: Primary relational database with ACID compliance
+- **TypeORM**: Object-relational mapping with decorators and migrations
+- **Docker**: Containerized MySQL for development environment
 - **Redis 7+**: In-memory caching and session storage
-- **Elasticsearch 8+**: Full-text search and analytics engine
 
 #### Authentication & Security
-- **JWT (JSON Web Tokens)**: Stateless authentication with RS256 signing
+- **JWT (JSON Web Tokens)**: Stateless authentication with role-based claims
 - **bcrypt**: Password hashing with configurable cost factor
-- **express-rate-limit**: API rate limiting and DDoS protection
+- **Helmet**: Security middleware for HTTP headers
 - **CORS**: Cross-origin resource sharing configuration
+- **Rate Limiting**: Built-in NestJS throttling with Redis backend
 
-#### Integration & Communication
-- **Bull Queue**: Redis-based job queue for background processing
-- **Socket.io**: Real-time communication for notifications
-- **Axios**: HTTP client for external API integration
-- **Joi**: Request validation and schema enforcement
-
-#### Monitoring & Logging
+#### Development & Deployment
+- **Docker Compose**: Development environment orchestration
+- **Swagger/OpenAPI**: Automatic API documentation generation
 - **Winston**: Structured logging with multiple transports
-- **Prometheus**: Metrics collection and monitoring
-- **Jaeger**: Distributed tracing for performance analysis
-- **New Relic**: Application performance monitoring
+- **Jest**: Testing framework with TypeScript support
 
 ## Components and Interfaces
 
-### API Gateway Design
+### NestJS Controller Design
 
-#### Request Flow Architecture
+#### Role-Based Controller Architecture
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant AG as API Gateway
-    participant AS as Auth Service
-    participant MS as Microservice
-    participant DB as Database
+    participant PC as Products Controller
+    participant RG as Roles Guard
+    participant PS as Product Service
+    participant PR as Product Repository
+    participant DB as MySQL
     
-    C->>AG: HTTP Request
-    AG->>AG: Rate Limiting Check
-    AG->>AS: Token Validation
-    AS-->>AG: User Context
-    AG->>MS: Forwarded Request
-    MS->>DB: Data Operation
-    DB-->>MS: Result
-    MS-->>AG: Response
-    AG-->>C: HTTP Response
+    C->>PC: GET /api/products
+    PC->>RG: Check Role Permissions
+    RG-->>PC: Role: customer
+    PC->>PS: getProducts(filters, role)
+    PS->>PS: Apply Customer Filtering
+    PS->>PR: findWithFilters(customerFilters)
+    PR->>DB: SELECT with role constraints
+    DB-->>PR: Filtered Results
+    PR-->>PS: Products
+    PS-->>PC: Customer-Visible Products
+    PC-->>C: HTTP Response
 ```
 
-#### Gateway Responsibilities
-- **Request Routing**: Intelligent routing based on URL patterns and service health
-- **Authentication**: JWT token validation and user context injection
-- **Rate Limiting**: Per-user and per-IP rate limiting with Redis backend
-- **Request/Response Transformation**: Header injection and response formatting
-- **Circuit Breaking**: Automatic failover and service health monitoring
-- **Logging**: Comprehensive request/response logging for audit and debugging
-
-### Service Interface Definitions
-
-#### Authentication Service Interface
+#### Authentication Module Interface
 ```typescript
-interface AuthenticationService {
-  // Registration and login
-  register(userData: RegisterRequest): Promise<AuthResponse>
-  login(credentials: LoginRequest): Promise<AuthResponse>
-  logout(token: string): Promise<void>
-  refreshToken(refreshToken: string): Promise<AuthResponse>
-  
-  // Password management
-  requestPasswordReset(email: string): Promise<void>
-  resetPassword(token: string, newPassword: string): Promise<void>
-  changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void>
-  
-  // Token validation
-  validateToken(token: string): Promise<UserContext>
-  revokeToken(token: string): Promise<void>
-}
+@Module({
+  imports: [
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '24h' }
+    }),
+    PassportModule
+  ],
+  providers: [AuthService, JwtStrategy, LocalStrategy],
+  controllers: [AuthController],
+  exports: [AuthService]
+})
+export class AuthModule {}
 
-interface RegisterRequest {
-  name: string
-  email: string
-  password: string
-}
+@Injectable()
+export class AuthService {
+  constructor(
+    private usersService: UsersService,
+    private jwtService: JwtService
+  ) {}
 
-interface LoginRequest {
-  email: string
-  password: string
-}
+  async validateUser(email: string, password: string): Promise<any> {
+    const user = await this.usersService.findByEmail(email)
+    if (user && await bcrypt.compare(password, user.password)) {
+      const { password, ...result } = user
+      return result
+    }
+    return null
+  }
 
-interface AuthResponse {
-  token: string
-  refreshToken: string
-  user: UserProfile
-  expiresIn: number
-}
-```
+  async login(user: any) {
+    const payload = { 
+      email: user.email, 
+      sub: user.id, 
+      role: user.role,
+      permissions: user.permissions 
+    }
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: user
+    }
+  }
 
-#### Product Service Interface
-```typescript
-interface ProductService {
-  // Product retrieval
-  getProducts(filters: ProductFilters, pagination: Pagination): Promise<ProductPage>
-  getProduct(productId: string): Promise<ProductDetail>
-  searchProducts(query: SearchQuery): Promise<ProductPage>
-  
-  // Category management
-  getCategories(): Promise<Category[]>
-  getProductsByCategory(categoryId: string, pagination: Pagination): Promise<ProductPage>
-  
-  // Availability and pricing
-  checkAvailability(productIds: string[]): Promise<AvailabilityMap>
-  getCurrentPrices(productIds: string[]): Promise<PriceMap>
-}
-
-interface ProductFilters {
-  categoryId?: string
-  sellerId?: string
-  priceRange?: { min: number; max: number }
-  availability?: boolean
-  brand?: string
-  rating?: number
-}
-
-interface ProductPage {
-  products: Product[]
-  totalCount: number
-  hasNextPage: boolean
-  filters: FilterOptions
+  async register(createUserDto: CreateUserDto): Promise<User> {
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 12)
+    return this.usersService.create({
+      ...createUserDto,
+      password: hashedPassword,
+      role: UserRole.CUSTOMER
+    })
+  }
 }
 ```
 
-#### Cart Service Interface
+#### Products Controller with Role-Based Access
 ```typescript
-interface CartService {
-  // Cart operations
-  getCart(userId: string): Promise<Cart>
-  addToCart(userId: string, item: CartItem): Promise<Cart>
-  updateCartItem(userId: string, itemId: string, quantity: number): Promise<Cart>
-  removeFromCart(userId: string, itemId: string): Promise<Cart>
-  clearCart(userId: string): Promise<void>
-  
-  // Guest cart operations
-  createGuestCart(): Promise<GuestCartToken>
-  getGuestCart(token: string): Promise<Cart>
-  mergeGuestCart(userId: string, guestToken: string): Promise<Cart>
-  
-  // Cart validation
-  validateCart(cart: Cart): Promise<CartValidation>
-  calculateTotals(cart: Cart): Promise<CartTotals>
-}
+@Controller('api/products')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class ProductsController {
+  constructor(private readonly productsService: ProductsService) {}
 
-interface Cart {
-  id: string
-  userId?: string
-  items: CartItem[]
-  totals: CartTotals
-  lastUpdated: Date
-}
+  @Get()
+  @Roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.SUPER_ADMIN)
+  async getProducts(
+    @Query() filters: ProductFiltersDto,
+    @Query() pagination: PaginationDto,
+    @Request() req
+  ): Promise<ProductPageDto> {
+    return this.productsService.findByRole(
+      filters, 
+      pagination, 
+      req.user.role
+    )
+  }
 
-interface CartItem {
-  productId: string
-  sellerId: string
-  quantity: number
-  price: number
-  availability: boolean
+  @Get(':id')
+  @Roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.SUPER_ADMIN)
+  async getProduct(
+    @Param('id') id: string,
+    @Request() req
+  ): Promise<ProductDetailDto> {
+    return this.productsService.findOneByRole(id, req.user.role)
+  }
+
+  @Get('search')
+  @Roles(UserRole.CUSTOMER)
+  async searchProducts(
+    @Query() searchQuery: SearchQueryDto
+  ): Promise<ProductPageDto> {
+    return this.productsService.search(searchQuery)
+  }
 }
 ```
 
-#### Order Service Interface
+#### Cart Controller with Customer-Specific Logic
 ```typescript
-interface OrderService {
-  // Order placement
-  createOrder(userId: string, orderData: CreateOrderRequest): Promise<Order>
-  validateOrderData(orderData: CreateOrderRequest): Promise<OrderValidation>
-  
-  // Order management
-  getOrder(orderId: string, userId: string): Promise<Order>
-  getOrderHistory(userId: string, pagination: Pagination): Promise<OrderPage>
-  cancelOrder(orderId: string, userId: string): Promise<Order>
-  
-  // Order tracking
-  getOrderStatus(orderId: string): Promise<OrderStatus>
-  getTrackingInfo(orderId: string): Promise<TrackingInfo>
-}
+@Controller('api/cart')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.CUSTOMER)
+export class CartController {
+  constructor(private readonly cartService: CartService) {}
 
-interface CreateOrderRequest {
-  cartId: string
-  shippingAddress: Address
-  paymentMethod: PaymentMethod
-  specialInstructions?: string
-}
+  @Get()
+  async getCart(@Request() req): Promise<CartDto> {
+    return this.cartService.getCartByUserId(req.user.id)
+  }
 
-interface Order {
-  id: string
-  orderNumber: string
-  userId: string
-  items: OrderItem[]
-  shippingAddress: Address
-  paymentMethod: PaymentMethod
-  status: OrderStatus
-  totals: OrderTotals
-  createdAt: Date
-  estimatedDelivery?: Date
+  @Post('items')
+  async addToCart(
+    @Body() addItemDto: AddCartItemDto,
+    @Request() req
+  ): Promise<CartDto> {
+    return this.cartService.addItem(req.user.id, addItemDto)
+  }
+
+  @Put('items/:itemId')
+  async updateCartItem(
+    @Param('itemId') itemId: string,
+    @Body() updateDto: UpdateCartItemDto,
+    @Request() req
+  ): Promise<CartDto> {
+    return this.cartService.updateItem(req.user.id, itemId, updateDto)
+  }
+
+  @Delete('items/:itemId')
+  async removeFromCart(
+    @Param('itemId') itemId: string,
+    @Request() req
+  ): Promise<CartDto> {
+    return this.cartService.removeItem(req.user.id, itemId)
+  }
 }
 ```
 
-### Database Integration Layer
-
-#### Connection Management
+#### Orders Controller with Multi-Seller Support
 ```typescript
-interface DatabaseManager {
-  // Connection pooling
-  getConnection(): Promise<DatabaseConnection>
-  executeTransaction<T>(operation: (conn: DatabaseConnection) => Promise<T>): Promise<T>
-  
-  // Health monitoring
-  checkHealth(): Promise<HealthStatus>
-  getConnectionStats(): ConnectionStats
-}
+@Controller('api/orders')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.CUSTOMER)
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
 
-interface DatabaseConnection {
-  query<T>(sql: string, params?: any[]): Promise<T[]>
-  execute(sql: string, params?: any[]): Promise<ExecutionResult>
-  beginTransaction(): Promise<void>
-  commit(): Promise<void>
-  rollback(): Promise<void>
+  @Post()
+  async createOrder(
+    @Body() createOrderDto: CreateOrderDto,
+    @Request() req
+  ): Promise<OrderDto> {
+    return this.ordersService.createOrder(req.user.id, createOrderDto)
+  }
+
+  @Get()
+  async getOrderHistory(
+    @Query() pagination: PaginationDto,
+    @Request() req
+  ): Promise<OrderPageDto> {
+    return this.ordersService.getOrderHistory(req.user.id, pagination)
+  }
+
+  @Get(':id')
+  async getOrder(
+    @Param('id') orderId: string,
+    @Request() req
+  ): Promise<OrderDetailDto> {
+    return this.ordersService.getOrderById(orderId, req.user.id)
+  }
+
+  @Put(':id/cancel')
+  async cancelOrder(
+    @Param('id') orderId: string,
+    @Request() req
+  ): Promise<OrderDto> {
+    return this.ordersService.cancelOrder(orderId, req.user.id)
+  }
 }
 ```
 
-#### Repository Pattern Implementation
+### Service Layer with Role-Based Filtering
+
+#### Product Service Implementation
 ```typescript
-abstract class BaseRepository<T> {
-  protected tableName: string
-  protected db: DatabaseManager
-  
-  async findById(id: string): Promise<T | null>
-  async findMany(filters: FilterCriteria): Promise<T[]>
-  async create(entity: Partial<T>): Promise<T>
-  async update(id: string, updates: Partial<T>): Promise<T>
-  async delete(id: string): Promise<void>
-  
-  protected abstract mapToEntity(row: any): T
-  protected abstract mapToRow(entity: Partial<T>): any
+@Injectable()
+export class ProductsService {
+  constructor(
+    @InjectRepository(Product)
+    private productRepository: Repository<Product>,
+    private cacheManager: CacheManager
+  ) {}
+
+  async findByRole(
+    filters: ProductFiltersDto,
+    pagination: PaginationDto,
+    userRole: UserRole
+  ): Promise<ProductPageDto> {
+    const cacheKey = `products:${userRole}:${JSON.stringify(filters)}:${pagination.page}`
+    
+    let products = await this.cacheManager.get(cacheKey)
+    if (!products) {
+      const queryBuilder = this.productRepository
+        .createQueryBuilder('product')
+        .leftJoinAndSelect('product.category', 'category')
+        .leftJoinAndSelect('product.seller', 'seller')
+
+      // Apply role-based filtering
+      this.applyRoleFilters(queryBuilder, userRole)
+      this.applyUserFilters(queryBuilder, filters)
+      
+      const [items, total] = await queryBuilder
+        .skip((pagination.page - 1) * pagination.limit)
+        .take(pagination.limit)
+        .getManyAndCount()
+
+      products = {
+        products: items.map(product => this.transformForRole(product, userRole)),
+        pagination: {
+          page: pagination.page,
+          limit: pagination.limit,
+          total,
+          hasNextPage: total > pagination.page * pagination.limit
+        }
+      }
+
+      await this.cacheManager.set(cacheKey, products, 300) // 5 minutes
+    }
+
+    return products
+  }
+
+  private applyRoleFilters(
+    queryBuilder: SelectQueryBuilder<Product>,
+    userRole: UserRole
+  ): void {
+    switch (userRole) {
+      case UserRole.CUSTOMER:
+        queryBuilder
+          .andWhere('product.isActive = :isActive', { isActive: true })
+          .andWhere('product.stockQuantity > 0')
+          .andWhere('seller.isApproved = :isApproved', { isApproved: true })
+        break
+      case UserRole.SELLER:
+        // Sellers see their own products regardless of status
+        queryBuilder.andWhere('product.sellerId = :sellerId', { 
+          sellerId: this.getCurrentUserId() 
+        })
+        break
+      case UserRole.SUPER_ADMIN:
+        // Admin sees all products
+        break
+    }
+  }
+
+  private transformForRole(product: Product, userRole: UserRole): any {
+    const base = {
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      images: product.images,
+      category: product.category
+    }
+
+    switch (userRole) {
+      case UserRole.CUSTOMER:
+        return {
+          ...base,
+          availability: product.stockQuantity > 0,
+          averageRating: product.averageRating,
+          reviewCount: product.reviewCount
+        }
+      case UserRole.SELLER:
+        return {
+          ...base,
+          stockQuantity: product.stockQuantity,
+          isActive: product.isActive,
+          createdAt: product.createdAt
+        }
+      case UserRole.SUPER_ADMIN:
+        return {
+          ...base,
+          stockQuantity: product.stockQuantity,
+          isActive: product.isActive,
+          seller: product.seller,
+          createdAt: product.createdAt,
+          updatedAt: product.updatedAt
+        }
+    }
+  }
 }
+```
+
+### Guard Implementation
+
+#### JWT Authentication Guard
+```typescript
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  canActivate(context: ExecutionContext) {
+    return super.canActivate(context)
+  }
+
+  handleRequest(err, user, info) {
+    if (err || !user) {
+      throw err || new UnauthorizedException()
+    }
+    return user
+  }
+}
+```
+
+#### Role-Based Authorization Guard
+```typescript
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()]
+    )
+
+    if (!requiredRoles) {
+      return true
+    }
+
+    const { user } = context.switchToHttp().getRequest()
+    return requiredRoles.some((role) => user.role === role)
+  }
+}
+
+export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles)
+export const ROLES_KEY = 'roles'
 ```
 
 ## Data Models
 
-### Core Entity Relationships
+### TypeORM Entity Relationships
+
+The unified architecture uses a single MySQL database with TypeORM entities that support role-based access:
 
 ```mermaid
 erDiagram
-    CUSTOMERS ||--o{ ORDERS : places
-    CUSTOMERS ||--o{ CART_ITEMS : has
-    CUSTOMERS ||--o{ ADDRESSES : owns
-    CUSTOMERS ||--o{ REVIEWS : writes
-    CUSTOMERS ||--o{ WISHLISTS : maintains
+    USERS ||--o{ ORDERS : places
+    USERS ||--o{ CART_ITEMS : has
+    USERS ||--o{ ADDRESSES : owns
+    USERS ||--o{ REVIEWS : writes
+    USERS ||--o{ WISHLISTS : maintains
+    USERS ||--o{ PRODUCTS : sells
     
     ORDERS ||--o{ ORDER_ITEMS : contains
     ORDERS }o--|| ADDRESSES : ships_to
-    ORDERS }o--|| PAYMENT_METHODS : paid_with
     
     PRODUCTS ||--o{ ORDER_ITEMS : ordered
     PRODUCTS ||--o{ CART_ITEMS : added_to_cart
     PRODUCTS ||--o{ REVIEWS : reviewed
     PRODUCTS ||--o{ WISHLIST_ITEMS : saved_to
     PRODUCTS }o--|| CATEGORIES : belongs_to
-    PRODUCTS }o--|| SELLERS : sold_by
     
     WISHLISTS ||--o{ WISHLIST_ITEMS : contains
     
-    CUSTOMERS {
+    USERS {
         uuid id PK
         string email UK
-        string password_hash
+        string password
         string name
         string phone
+        enum role
         boolean email_verified
+        boolean is_approved
         timestamp created_at
         timestamp updated_at
         timestamp last_login
@@ -457,7 +597,7 @@ erDiagram
     
     ADDRESSES {
         uuid id PK
-        uuid customer_id FK
+        uuid user_id FK
         string street_address
         string city
         string state
@@ -524,7 +664,7 @@ erDiagram
     
     CART_ITEMS {
         uuid id PK
-        uuid customer_id FK
+        uuid user_id FK
         string session_token
         uuid product_id FK
         integer quantity
@@ -534,7 +674,7 @@ erDiagram
     
     REVIEWS {
         uuid id PK
-        uuid customer_id FK
+        uuid user_id FK
         uuid product_id FK
         uuid order_id FK
         integer rating
@@ -545,7 +685,7 @@ erDiagram
     
     WISHLISTS {
         uuid id PK
-        uuid customer_id FK
+        uuid user_id FK
         string name
         boolean is_public
         string share_token
@@ -560,183 +700,499 @@ erDiagram
     }
 ```
 
-### Database Schema Design
+### TypeORM Entity Definitions
 
-#### Customers Table
-```sql
-CREATE TABLE customers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    phone VARCHAR(20),
-    email_verified BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    last_login TIMESTAMP WITH TIME ZONE,
-    
-    CONSTRAINT valid_email CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
-    CONSTRAINT valid_phone CHECK (phone IS NULL OR phone ~* '^\+?[1-9]\d{1,14}$')
-);
-
-CREATE INDEX idx_customers_email ON customers(email);
-CREATE INDEX idx_customers_created_at ON customers(created_at);
-CREATE INDEX idx_customers_last_login ON customers(last_login);
-```
-
-#### Products Table
-```sql
-CREATE TABLE products (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    seller_id UUID NOT NULL,
-    category_id UUID NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
-    stock_quantity INTEGER NOT NULL CHECK (stock_quantity >= 0),
-    is_active BOOLEAN DEFAULT TRUE,
-    images JSONB DEFAULT '[]',
-    average_rating DECIMAL(3,2) DEFAULT 0 CHECK (average_rating >= 0 AND average_rating <= 5),
-    review_count INTEGER DEFAULT 0 CHECK (review_count >= 0),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    FOREIGN KEY (category_id) REFERENCES categories(id),
-    FOREIGN KEY (seller_id) REFERENCES sellers(id)
-);
-
-CREATE INDEX idx_products_seller_id ON products(seller_id);
-CREATE INDEX idx_products_category_id ON products(category_id);
-CREATE INDEX idx_products_is_active ON products(is_active);
-CREATE INDEX idx_products_price ON products(price);
-CREATE INDEX idx_products_average_rating ON products(average_rating);
-CREATE INDEX idx_products_created_at ON products(created_at);
-CREATE INDEX idx_products_name_gin ON products USING gin(to_tsvector('english', name));
-CREATE INDEX idx_products_description_gin ON products USING gin(to_tsvector('english', description));
-```
-
-#### Orders Table
-```sql
-CREATE TYPE order_status AS ENUM ('placed', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled');
-CREATE TYPE payment_method AS ENUM ('cod', 'online', 'wallet');
-CREATE TYPE payment_status AS ENUM ('pending', 'completed', 'failed', 'refunded');
-
-CREATE TABLE orders (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_number VARCHAR(20) UNIQUE NOT NULL,
-    customer_id UUID NOT NULL,
-    shipping_address_id UUID NOT NULL,
-    status order_status DEFAULT 'placed',
-    subtotal DECIMAL(10,2) NOT NULL CHECK (subtotal >= 0),
-    tax_amount DECIMAL(10,2) DEFAULT 0 CHECK (tax_amount >= 0),
-    shipping_cost DECIMAL(10,2) DEFAULT 0 CHECK (shipping_cost >= 0),
-    total_amount DECIMAL(10,2) NOT NULL CHECK (total_amount >= 0),
-    payment_method payment_method NOT NULL,
-    payment_status payment_status DEFAULT 'pending',
-    special_instructions TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    estimated_delivery TIMESTAMP WITH TIME ZONE,
-    
-    FOREIGN KEY (customer_id) REFERENCES customers(id),
-    FOREIGN KEY (shipping_address_id) REFERENCES addresses(id)
-);
-
-CREATE INDEX idx_orders_customer_id ON orders(customer_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_created_at ON orders(created_at);
-CREATE INDEX idx_orders_order_number ON orders(order_number);
-```
-
-### Data Validation and Constraints
-
-#### Business Rule Constraints
-```sql
--- Ensure cart items reference valid products
-ALTER TABLE cart_items 
-ADD CONSTRAINT fk_cart_items_product 
-FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE;
-
--- Ensure reviews are from verified purchases
-ALTER TABLE reviews 
-ADD CONSTRAINT fk_reviews_order 
-FOREIGN KEY (order_id) REFERENCES orders(id);
-
--- Ensure order items maintain product snapshot integrity
-ALTER TABLE order_items 
-ADD CONSTRAINT valid_order_item_price 
-CHECK (unit_price > 0 AND total_price = unit_price * quantity);
-
--- Ensure addresses belong to customers
-ALTER TABLE addresses 
-ADD CONSTRAINT fk_addresses_customer 
-FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE;
-```
-
-#### Data Integrity Triggers
-```sql
--- Update product average rating when reviews change
-CREATE OR REPLACE FUNCTION update_product_rating()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE products 
-    SET average_rating = (
-        SELECT COALESCE(AVG(rating), 0) 
-        FROM reviews 
-        WHERE product_id = COALESCE(NEW.product_id, OLD.product_id)
-    ),
-    review_count = (
-        SELECT COUNT(*) 
-        FROM reviews 
-        WHERE product_id = COALESCE(NEW.product_id, OLD.product_id)
-    )
-    WHERE id = COALESCE(NEW.product_id, OLD.product_id);
-    
-    RETURN COALESCE(NEW, OLD);
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_update_product_rating
-    AFTER INSERT OR UPDATE OR DELETE ON reviews
-    FOR EACH ROW EXECUTE FUNCTION update_product_rating();
-```
-
-### Caching Strategy
-
-#### Redis Cache Design
+#### User Entity (Unified for All Roles)
 ```typescript
-interface CacheManager {
-  // Product caching
-  cacheProduct(productId: string, product: Product, ttl?: number): Promise<void>
-  getCachedProduct(productId: string): Promise<Product | null>
-  invalidateProductCache(productId: string): Promise<void>
-  
-  // Search result caching
-  cacheSearchResults(query: string, results: ProductPage, ttl?: number): Promise<void>
-  getCachedSearchResults(query: string): Promise<ProductPage | null>
-  
-  // Cart caching
-  cacheCart(userId: string, cart: Cart, ttl?: number): Promise<void>
-  getCachedCart(userId: string): Promise<Cart | null>
-  invalidateCartCache(userId: string): Promise<void>
-  
-  // Session management
-  storeSession(sessionId: string, sessionData: SessionData, ttl: number): Promise<void>
-  getSession(sessionId: string): Promise<SessionData | null>
-  invalidateSession(sessionId: string): Promise<void>
+export enum UserRole {
+  CUSTOMER = 'customer',
+  SELLER = 'seller',
+  SUPER_ADMIN = 'super_admin'
+}
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column({ unique: true })
+  email: string
+
+  @Column()
+  password: string
+
+  @Column()
+  name: string
+
+  @Column({ nullable: true })
+  phone: string
+
+  @Column({
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.CUSTOMER
+  })
+  role: UserRole
+
+  @Column({ default: false })
+  emailVerified: boolean
+
+  @Column({ default: true })
+  isApproved: boolean // For seller approval workflow
+
+  @CreateDateColumn()
+  createdAt: Date
+
+  @UpdateDateColumn()
+  updatedAt: Date
+
+  @Column({ nullable: true })
+  lastLogin: Date
+
+  // Relations
+  @OneToMany(() => Address, address => address.user)
+  addresses: Address[]
+
+  @OneToMany(() => Order, order => order.customer)
+  orders: Order[]
+
+  @OneToMany(() => CartItem, cartItem => cartItem.user)
+  cartItems: CartItem[]
+
+  @OneToMany(() => Review, review => review.user)
+  reviews: Review[]
+
+  @OneToMany(() => Wishlist, wishlist => wishlist.user)
+  wishlists: Wishlist[]
+
+  @OneToMany(() => Product, product => product.seller)
+  products: Product[] // For sellers
 }
 ```
 
-#### Cache Key Patterns
+#### Product Entity with Role-Based Access
 ```typescript
+@Entity('products')
+export class Product {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column()
+  name: string
+
+  @Column('text')
+  description: string
+
+  @Column('decimal', { precision: 10, scale: 2 })
+  price: number
+
+  @Column('int')
+  stockQuantity: number
+
+  @Column({ default: true })
+  isActive: boolean
+
+  @Column('json', { default: '[]' })
+  images: string[]
+
+  @Column('decimal', { precision: 3, scale: 2, default: 0 })
+  averageRating: number
+
+  @Column('int', { default: 0 })
+  reviewCount: number
+
+  @CreateDateColumn()
+  createdAt: Date
+
+  @UpdateDateColumn()
+  updatedAt: Date
+
+  // Relations
+  @ManyToOne(() => User, user => user.products)
+  @JoinColumn({ name: 'seller_id' })
+  seller: User
+
+  @Column('uuid')
+  sellerId: string
+
+  @ManyToOne(() => Category, category => category.products)
+  @JoinColumn({ name: 'category_id' })
+  category: Category
+
+  @Column('uuid')
+  categoryId: string
+
+  @OneToMany(() => OrderItem, orderItem => orderItem.product)
+  orderItems: OrderItem[]
+
+  @OneToMany(() => CartItem, cartItem => cartItem.product)
+  cartItems: CartItem[]
+
+  @OneToMany(() => Review, review => review.product)
+  reviews: Review[]
+
+  @OneToMany(() => WishlistItem, wishlistItem => wishlistItem.product)
+  wishlistItems: WishlistItem[]
+}
+```
+
+#### Order Entity with Multi-Seller Support
+```typescript
+export enum OrderStatus {
+  PLACED = 'placed',
+  CONFIRMED = 'confirmed',
+  PROCESSING = 'processing',
+  SHIPPED = 'shipped',
+  OUT_FOR_DELIVERY = 'out_for_delivery',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled'
+}
+
+export enum PaymentMethod {
+  COD = 'cod',
+  ONLINE = 'online',
+  WALLET = 'wallet'
+}
+
+export enum PaymentStatus {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  REFUNDED = 'refunded'
+}
+
+@Entity('orders')
+export class Order {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column({ unique: true })
+  orderNumber: string
+
+  @Column({
+    type: 'enum',
+    enum: OrderStatus,
+    default: OrderStatus.PLACED
+  })
+  status: OrderStatus
+
+  @Column('decimal', { precision: 10, scale: 2 })
+  subtotal: number
+
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  taxAmount: number
+
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  shippingCost: number
+
+  @Column('decimal', { precision: 10, scale: 2 })
+  totalAmount: number
+
+  @Column({
+    type: 'enum',
+    enum: PaymentMethod
+  })
+  paymentMethod: PaymentMethod
+
+  @Column({
+    type: 'enum',
+    enum: PaymentStatus,
+    default: PaymentStatus.PENDING
+  })
+  paymentStatus: PaymentStatus
+
+  @Column('text', { nullable: true })
+  specialInstructions: string
+
+  @CreateDateColumn()
+  createdAt: Date
+
+  @UpdateDateColumn()
+  updatedAt: Date
+
+  @Column({ nullable: true })
+  estimatedDelivery: Date
+
+  // Relations
+  @ManyToOne(() => User, user => user.orders)
+  @JoinColumn({ name: 'customer_id' })
+  customer: User
+
+  @Column('uuid')
+  customerId: string
+
+  @ManyToOne(() => Address, address => address.orders)
+  @JoinColumn({ name: 'shipping_address_id' })
+  shippingAddress: Address
+
+  @Column('uuid')
+  shippingAddressId: string
+
+  @OneToMany(() => OrderItem, orderItem => orderItem.order)
+  items: OrderItem[]
+}
+```
+
+#### Cart Entity for Customer Sessions
+```typescript
+@Entity('cart_items')
+export class CartItem {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column('int')
+  quantity: number
+
+  @Column({ nullable: true })
+  sessionToken: string // For guest carts
+
+  @CreateDateColumn()
+  createdAt: Date
+
+  @UpdateDateColumn()
+  updatedAt: Date
+
+  // Relations
+  @ManyToOne(() => User, user => user.cartItems, { nullable: true })
+  @JoinColumn({ name: 'user_id' })
+  user: User
+
+  @Column('uuid', { nullable: true })
+  userId: string
+
+  @ManyToOne(() => Product, product => product.cartItems)
+  @JoinColumn({ name: 'product_id' })
+  product: Product
+
+  @Column('uuid')
+  productId: string
+}
+```
+
+### Docker Database Configuration
+
+#### Docker Compose Setup
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ecommerce_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ecommerce
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+    
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:
+```
+
+#### TypeORM Configuration
+```typescript
+// src/config/database.config.ts
+import { TypeOrmModuleOptions } from '@nestjs/typeorm'
+import { ConfigService } from '@nestjs/config'
+
+export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOptions => ({
+  type: 'mysql',
+  host: configService.get('DB_HOST', 'localhost'),
+  port: configService.get('DB_PORT', 3306),
+  username: configService.get('DB_USERNAME', 'root'),
+  password: configService.get('DB_PASSWORD', 'root'),
+  database: configService.get('DB_NAME', 'ecommerce'),
+  entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+  synchronize: configService.get('NODE_ENV') === 'development',
+  migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
+  migrationsRun: true,
+  logging: configService.get('NODE_ENV') === 'development',
+  extra: {
+    connectionLimit: 10,
+    acquireTimeout: 60000,
+    timeout: 60000
+  }
+})
+```
+
+### Repository Pattern with Role-Based Filtering
+
+#### Base Repository with Role Support
+```typescript
+export abstract class BaseRepository<T> {
+  constructor(
+    protected repository: Repository<T>,
+    protected entityName: string
+  ) {}
+
+  async findByRole(
+    filters: any,
+    userRole: UserRole,
+    userId?: string
+  ): Promise<T[]> {
+    const queryBuilder = this.repository.createQueryBuilder(this.entityName)
+    
+    this.applyRoleFilters(queryBuilder, userRole, userId)
+    this.applyUserFilters(queryBuilder, filters)
+    
+    return queryBuilder.getMany()
+  }
+
+  protected abstract applyRoleFilters(
+    queryBuilder: SelectQueryBuilder<T>,
+    userRole: UserRole,
+    userId?: string
+  ): void
+
+  protected abstract applyUserFilters(
+    queryBuilder: SelectQueryBuilder<T>,
+    filters: any
+  ): void
+}
+```
+
+#### Product Repository Implementation
+```typescript
+@Injectable()
+export class ProductRepository extends BaseRepository<Product> {
+  constructor(
+    @InjectRepository(Product)
+    productRepository: Repository<Product>
+  ) {
+    super(productRepository, 'product')
+  }
+
+  protected applyRoleFilters(
+    queryBuilder: SelectQueryBuilder<Product>,
+    userRole: UserRole,
+    userId?: string
+  ): void {
+    switch (userRole) {
+      case UserRole.CUSTOMER:
+        queryBuilder
+          .andWhere('product.isActive = :isActive', { isActive: true })
+          .andWhere('product.stockQuantity > 0')
+          .leftJoin('product.seller', 'seller')
+          .andWhere('seller.isApproved = :isApproved', { isApproved: true })
+        break
+        
+      case UserRole.SELLER:
+        if (userId) {
+          queryBuilder.andWhere('product.sellerId = :sellerId', { sellerId: userId })
+        }
+        break
+        
+      case UserRole.SUPER_ADMIN:
+        // Admin sees all products
+        break
+    }
+  }
+
+  protected applyUserFilters(
+    queryBuilder: SelectQueryBuilder<Product>,
+    filters: any
+  ): void {
+    if (filters.categoryId) {
+      queryBuilder.andWhere('product.categoryId = :categoryId', { 
+        categoryId: filters.categoryId 
+      })
+    }
+    
+    if (filters.priceRange) {
+      queryBuilder.andWhere('product.price BETWEEN :minPrice AND :maxPrice', {
+        minPrice: filters.priceRange.min,
+        maxPrice: filters.priceRange.max
+      })
+    }
+    
+    if (filters.searchTerm) {
+      queryBuilder.andWhere(
+        '(product.name LIKE :searchTerm OR product.description LIKE :searchTerm)',
+        { searchTerm: `%${filters.searchTerm}%` }
+      )
+    }
+  }
+}
+```
+
+### Caching Strategy with Redis
+
+#### NestJS Cache Configuration
+```typescript
+// src/config/cache.config.ts
+import { CacheModule } from '@nestjs/cache-manager'
+import { redisStore } from 'cache-manager-redis-store'
+
+export const getCacheConfig = () => CacheModule.register({
+  store: redisStore,
+  host: process.env.REDIS_HOST || 'localhost',
+  port: process.env.REDIS_PORT || 6379,
+  ttl: 300, // 5 minutes default
+  max: 1000 // Maximum number of items in cache
+})
+```
+
+#### Cache Service Implementation
+```typescript
+@Injectable()
+export class CacheService {
+  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
+
+  // Product caching
+  async cacheProduct(productId: string, product: Product, ttl = 300): Promise<void> {
+    const key = CacheKeys.PRODUCT(productId)
+    await this.cacheManager.set(key, product, ttl)
+  }
+
+  async getCachedProduct(productId: string): Promise<Product | null> {
+    const key = CacheKeys.PRODUCT(productId)
+    return await this.cacheManager.get(key)
+  }
+
+  async invalidateProductCache(productId: string): Promise<void> {
+    const key = CacheKeys.PRODUCT(productId)
+    await this.cacheManager.del(key)
+  }
+
+  // Cart caching
+  async cacheCart(userId: string, cart: any, ttl = 600): Promise<void> {
+    const key = CacheKeys.CART(userId)
+    await this.cacheManager.set(key, cart, ttl)
+  }
+
+  async getCachedCart(userId: string): Promise<any | null> {
+    const key = CacheKeys.CART(userId)
+    return await this.cacheManager.get(key)
+  }
+
+  async invalidateCartCache(userId: string): Promise<void> {
+    const key = CacheKeys.CART(userId)
+    await this.cacheManager.del(key)
+  }
+}
+
 const CacheKeys = {
   PRODUCT: (id: string) => `product:${id}`,
   PRODUCT_LIST: (filters: string) => `products:${filters}`,
   SEARCH_RESULTS: (query: string) => `search:${Buffer.from(query).toString('base64')}`,
   CART: (userId: string) => `cart:${userId}`,
   USER_SESSION: (sessionId: string) => `session:${sessionId}`,
-  CATEGORY_TREE: () => 'categories:tree',
-  SELLER_PRODUCTS: (sellerId: string) => `seller:${sellerId}:products`
+  CATEGORY_TREE: () => 'categories:tree'
 }
 ```
 
@@ -1431,205 +1887,579 @@ This comprehensive testing strategy ensures that the Customer Backend API mainta
 **Validates: Requirements 28.7**
 ## Error Handling
 
-### Comprehensive Error Management Strategy
+### NestJS Exception Handling Strategy
 
-The Customer Backend API implements a multi-layered error handling approach that ensures consistent, informative, and secure error responses across all endpoints while maintaining system stability and user experience.
+The unified NestJS application implements comprehensive error handling through built-in exception filters and custom error responses that maintain consistency across all user roles.
 
-#### Error Classification and Response Codes
+#### Global Exception Filter
+```typescript
+@Catch()
+export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name)
 
-**Client Errors (4xx Series)**
-- **400 Bad Request**: Malformed requests, invalid JSON, or missing required parameters
-- **401 Unauthorized**: Missing, invalid, or expired authentication tokens
-- **403 Forbidden**: Valid authentication but insufficient permissions for the requested resource
-- **404 Not Found**: Requested resource does not exist or has been deleted
-- **409 Conflict**: Resource conflicts such as duplicate email registration or concurrent modifications
-- **422 Unprocessable Entity**: Valid request format but business rule violations
-- **429 Too Many Requests**: Rate limiting triggered due to excessive requests
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const ctx = host.switchToHttp()
+    const response = ctx.getResponse<Response>()
+    const request = ctx.getRequest<Request>()
 
-**Server Errors (5xx Series)**
-- **500 Internal Server Error**: Unexpected application errors with sensitive details hidden
-- **502 Bad Gateway**: External service dependencies unavailable or returning errors
-- **503 Service Unavailable**: Temporary service overload or maintenance mode
-- **504 Gateway Timeout**: External service timeouts or database connection issues
+    let status: number
+    let message: string
+    let code: string
 
-#### Error Response Structure
+    if (exception instanceof HttpException) {
+      status = exception.getStatus()
+      const exceptionResponse = exception.getResponse()
+      
+      if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+        message = (exceptionResponse as any).message || exception.message
+        code = (exceptionResponse as any).code || this.getErrorCode(status)
+      } else {
+        message = exceptionResponse as string
+        code = this.getErrorCode(status)
+      }
+    } else if (exception instanceof QueryFailedError) {
+      status = 400
+      message = 'Database operation failed'
+      code = 'DATABASE_ERROR'
+      this.logger.error('Database error:', exception)
+    } else {
+      status = 500
+      message = 'Internal server error'
+      code = 'INTERNAL_ERROR'
+      this.logger.error('Unexpected error:', exception)
+    }
 
-All error responses follow a standardized format for consistency:
+    const errorResponse = {
+      error: {
+        code,
+        message,
+        timestamp: new Date().toISOString(),
+        requestId: request.headers['x-request-id'] || 'unknown',
+        path: request.url
+      }
+    }
 
-```json
-{
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error description",
-    "details": {
-      "field": "specific_field",
-      "reason": "detailed_explanation"
-    },
-    "timestamp": "2024-03-10T10:30:00Z",
-    "requestId": "req_abc123def456",
-    "path": "/api/endpoint/path"
+    response.status(status).json(errorResponse)
+  }
+
+  private getErrorCode(status: number): string {
+    const codes = {
+      400: 'BAD_REQUEST',
+      401: 'UNAUTHORIZED',
+      403: 'FORBIDDEN',
+      404: 'NOT_FOUND',
+      409: 'CONFLICT',
+      422: 'VALIDATION_ERROR',
+      429: 'RATE_LIMIT_EXCEEDED',
+      500: 'INTERNAL_ERROR'
+    }
+    return codes[status] || 'UNKNOWN_ERROR'
   }
 }
 ```
 
-#### Error Handling Middleware Pipeline
+#### Custom Business Exception Classes
+```typescript
+export class BusinessException extends HttpException {
+  constructor(
+    message: string,
+    code: string,
+    status: HttpStatus = HttpStatus.BAD_REQUEST,
+    details?: any
+  ) {
+    super(
+      {
+        message,
+        code,
+        details
+      },
+      status
+    )
+  }
+}
 
-The error handling system processes errors through a structured middleware pipeline:
+export class ValidationException extends BusinessException {
+  constructor(message: string, details?: any) {
+    super(message, 'VALIDATION_ERROR', HttpStatus.UNPROCESSABLE_ENTITY, details)
+  }
+}
 
-1. **Error Detection**: Catch all errors from controllers, services, and database operations
-2. **Error Classification**: Determine error type and appropriate HTTP status code
-3. **Security Filtering**: Remove sensitive information from error messages
-4. **Response Formatting**: Apply standardized error response structure
-5. **Logging**: Record error details for monitoring and debugging
-6. **Client Response**: Send formatted error response to client
+export class ResourceNotFoundException extends BusinessException {
+  constructor(resource: string, id: string) {
+    super(
+      `${resource} with id ${id} not found`,
+      'RESOURCE_NOT_FOUND',
+      HttpStatus.NOT_FOUND
+    )
+  }
+}
 
-#### Validation Error Handling
+export class InsufficientStockException extends BusinessException {
+  constructor(productId: string, requested: number, available: number) {
+    super(
+      'Insufficient stock available',
+      'INSUFFICIENT_STOCK',
+      HttpStatus.CONFLICT,
+      { productId, requested, available }
+    )
+  }
+}
+```
 
-Input validation errors provide detailed feedback while maintaining security:
+#### Validation Pipe Configuration
+```typescript
+// main.ts
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+    exceptionFactory: (errors: ValidationError[]) => {
+      const details = errors.reduce((acc, error) => {
+        acc[error.property] = Object.values(error.constraints || {}).join(', ')
+        return acc
+      }, {})
+      
+      return new ValidationException('Request validation failed', details)
+    }
+  })
+)
+```
 
-```json
+### Error Response Format
+
+#### Standardized Error Structure
+```typescript
+interface APIErrorResponse {
+  error: {
+    code: string
+    message: string
+    details?: any
+    timestamp: string
+    requestId: string
+    path: string
+  }
+}
+
+// Example error responses
 {
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Request validation failed",
     "details": {
-      "email": "Invalid email format",
-      "password": "Password must be at least 8 characters",
-      "name": "Name is required"
+      "email": "must be a valid email",
+      "password": "must be at least 8 characters"
     },
     "timestamp": "2024-03-10T10:30:00Z",
-    "requestId": "req_validation_123",
+    "requestId": "req_123456789",
     "path": "/api/auth/register"
   }
 }
 ```
 
-#### Database Error Handling
+### Role-Based Error Handling
 
-Database errors are handled with careful attention to security and information disclosure:
+#### Service-Level Error Handling
+```typescript
+@Injectable()
+export class ProductsService {
+  async findOneByRole(id: string, userRole: UserRole, userId?: string): Promise<Product> {
+    const product = await this.productRepository.findOne({
+      where: { id },
+      relations: ['seller', 'category']
+    })
 
-- **Connection Errors**: Graceful degradation with retry mechanisms
-- **Constraint Violations**: Meaningful business-level error messages
-- **Transaction Failures**: Automatic rollback with consistent error responses
-- **Timeout Errors**: Clear timeout messages with suggested retry strategies
+    if (!product) {
+      throw new ResourceNotFoundException('Product', id)
+    }
 
-#### External Service Error Handling
+    // Role-based access validation
+    switch (userRole) {
+      case UserRole.CUSTOMER:
+        if (!product.isActive || product.stockQuantity <= 0) {
+          throw new ResourceNotFoundException('Product', id)
+        }
+        if (!product.seller.isApproved) {
+          throw new BusinessException(
+            'Product not available',
+            'PRODUCT_UNAVAILABLE',
+            HttpStatus.NOT_FOUND
+          )
+        }
+        break
 
-Integration with external services includes comprehensive error handling:
+      case UserRole.SELLER:
+        if (product.sellerId !== userId) {
+          throw new BusinessException(
+            'Access denied to this product',
+            'ACCESS_DENIED',
+            HttpStatus.FORBIDDEN
+          )
+        }
+        break
 
-- **Circuit Breaker Pattern**: Prevent cascading failures from external service outages
-- **Retry Logic**: Exponential backoff for transient failures
-- **Fallback Mechanisms**: Alternative responses when external services are unavailable
-- **Timeout Management**: Configurable timeouts with graceful error responses
+      case UserRole.SUPER_ADMIN:
+        // Admin can access any product
+        break
+    }
 
-#### Rate Limiting Error Responses
+    return product
+  }
+}
+```
 
-Rate limiting errors provide clear information about limits and retry timing:
+### Rate Limiting and Throttling
 
-```json
-{
-  "error": {
-    "code": "RATE_LIMIT_EXCEEDED",
-    "message": "Too many requests. Please try again later.",
-    "details": {
-      "limit": 100,
-      "window": "1 hour",
-      "retryAfter": 3600
-    },
-    "timestamp": "2024-03-10T10:30:00Z",
-    "requestId": "req_ratelimit_456",
-    "path": "/api/auth/login"
+#### NestJS Throttler Configuration
+```typescript
+// app.module.ts
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      ttl: 60, // 1 minute
+      limit: 100, // 100 requests per minute
+      storage: new ThrottlerStorageRedisService(redisClient)
+    })
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard
+    }
+  ]
+})
+export class AppModule {}
+
+// Custom rate limiting for auth endpoints
+@Controller('api/auth')
+@UseGuards(ThrottlerGuard)
+export class AuthController {
+  @Post('login')
+  @Throttle(5, 60) // 5 attempts per minute
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto)
+  }
+
+  @Post('register')
+  @Throttle(3, 300) // 3 registrations per 5 minutes
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto)
   }
 }
 ```
 
 ## Testing Strategy
 
-### Comprehensive Testing Approach
+### NestJS Testing Framework
 
-The Customer Backend API employs a multi-tiered testing strategy that combines traditional testing methodologies with property-based testing to ensure both functional correctness and mathematical guarantees of system behavior.
+The unified NestJS application employs a comprehensive testing strategy that combines traditional testing methodologies with property-based testing to ensure both functional correctness and mathematical guarantees of system behavior across all user roles.
 
 #### Testing Pyramid Structure
 
 **Unit Tests (Foundation - 70% of tests)**
-- **Scope**: Individual functions, methods, and isolated components
-- **Framework**: Jest with TypeScript support and comprehensive mocking
+- **Scope**: Individual services, controllers, and isolated components
+- **Framework**: Jest with NestJS testing utilities and TypeScript support
 - **Coverage Target**: 95%+ code coverage for business logic
 - **Focus Areas**:
-  - Business rule validation and enforcement
-  - Data transformation and calculation accuracy
-  - Error handling and edge case scenarios
-  - Security validation and input sanitization
+  - Role-based business logic validation
+  - Service method functionality and error handling
+  - Guard and pipe behavior verification
+  - Repository method testing with mocked TypeORM
 
 **Integration Tests (Middle Layer - 20% of tests)**
-- **Scope**: Service interactions, database operations, and API endpoints
-- **Framework**: Jest with Supertest for HTTP testing and Docker for database isolation
-- **Environment**: Containerized test environment with PostgreSQL and Redis
+- **Scope**: Module interactions, database operations, and API endpoints
+- **Framework**: Jest with NestJS Test Module and Supertest for HTTP testing
+- **Environment**: In-memory SQLite or Docker MySQL for isolated testing
 - **Focus Areas**:
-  - API endpoint functionality and response formats
-  - Database transaction integrity and rollback scenarios
-  - Service-to-service communication patterns
+  - Controller endpoint functionality across all roles
+  - Database transaction integrity and TypeORM operations
   - Authentication and authorization workflows
+  - Role-based access control validation
 
 **Property-Based Tests (Correctness Layer - 8% of tests)**
 - **Framework**: fast-check for JavaScript/TypeScript property testing
 - **Configuration**: Minimum 100 iterations per property with configurable seed values
 - **Focus Areas**:
   - Universal properties that must hold for all valid inputs
+  - Role-based filtering correctness across user types
   - Mathematical correctness of calculations and transformations
   - System invariants and consistency guarantees
-  - Round-trip properties for serialization and data integrity
 
 **End-to-End Tests (Integration Layer - 2% of tests)**
-- **Scope**: Complete user workflows across the entire system
-- **Framework**: Playwright for API workflow testing
-- **Environment**: Staging environment with production-like data and load
+- **Scope**: Complete user workflows across the entire unified application
+- **Framework**: Jest with full application bootstrap
+- **Environment**: Docker containers with MySQL and Redis
 - **Focus Areas**:
-  - Critical customer journey validation
-  - Cross-service integration verification
+  - Critical customer, seller, and admin journey validation
+  - Cross-role integration verification
   - Performance under realistic load conditions
   - Security vulnerability and penetration testing
 
-#### Property-Based Testing Implementation
+#### NestJS Unit Testing Implementation
 
-**Test Configuration and Generators**
+**Service Testing with Dependency Injection**
 ```typescript
-import fc from 'fast-check'
+describe('ProductsService', () => {
+  let service: ProductsService
+  let repository: Repository<Product>
+  let cacheService: CacheService
 
-// Domain-specific generators for comprehensive property testing
-const validEmailGenerator = fc.emailAddress()
-const strongPasswordGenerator = fc.string({ minLength: 8, maxLength: 50 })
-  .filter(pwd => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(pwd))
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ProductsService,
+        {
+          provide: getRepositoryToken(Product),
+          useClass: Repository
+        },
+        {
+          provide: CacheService,
+          useValue: {
+            getCachedProduct: jest.fn(),
+            cacheProduct: jest.fn(),
+            invalidateProductCache: jest.fn()
+          }
+        }
+      ]
+    }).compile()
 
-const customerDataGenerator = fc.record({
-  name: fc.string({ minLength: 1, maxLength: 100 }),
-  email: validEmailGenerator,
-  password: strongPasswordGenerator,
-  phone: fc.option(fc.string({ minLength: 10, maxLength: 15 }))
-})
+    service = module.get<ProductsService>(ProductsService)
+    repository = module.get<Repository<Product>>(getRepositoryToken(Product))
+    cacheService = module.get<CacheService>(CacheService)
+  })
 
-const productGenerator = fc.record({
-  id: fc.uuid(),
-  name: fc.string({ minLength: 1, maxLength: 200 }),
-  price: fc.float({ min: 0.01, max: 10000, noNaN: true }),
-  stockQuantity: fc.integer({ min: 0, max: 1000 }),
-  sellerId: fc.uuid(),
-  categoryId: fc.uuid()
-})
+  describe('findByRole', () => {
+    it('should filter products for customer role', async () => {
+      const mockProducts = [
+        { id: '1', name: 'Product 1', isActive: true, stockQuantity: 10 },
+        { id: '2', name: 'Product 2', isActive: false, stockQuantity: 5 }
+      ]
 
-const cartItemGenerator = fc.record({
-  productId: fc.uuid(),
-  quantity: fc.integer({ min: 1, max: 10 }),
-  price: fc.float({ min: 0.01, max: 1000, noNaN: true }),
-  sellerId: fc.uuid()
+      jest.spyOn(repository, 'createQueryBuilder').mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([mockProducts, 2])
+      } as any)
+
+      const result = await service.findByRole(
+        {},
+        { page: 1, limit: 10 },
+        UserRole.CUSTOMER
+      )
+
+      expect(result.products).toHaveLength(2)
+      expect(repository.createQueryBuilder).toHaveBeenCalled()
+    })
+
+    it('should show seller-specific products for seller role', async () => {
+      const sellerId = 'seller-123'
+      const mockProducts = [
+        { id: '1', name: 'Seller Product', sellerId, isActive: false }
+      ]
+
+      jest.spyOn(repository, 'createQueryBuilder').mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([mockProducts, 1])
+      } as any)
+
+      const result = await service.findByRole(
+        {},
+        { page: 1, limit: 10 },
+        UserRole.SELLER,
+        sellerId
+      )
+
+      expect(result.products).toHaveLength(1)
+      expect(result.products[0].sellerId).toBe(sellerId)
+    })
+  })
 })
 ```
+
+**Controller Testing with Guards**
+```typescript
+describe('ProductsController', () => {
+  let controller: ProductsController
+  let service: ProductsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [ProductsController],
+      providers: [
+        {
+          provide: ProductsService,
+          useValue: {
+            findByRole: jest.fn(),
+            findOneByRole: jest.fn()
+          }
+        }
+      ]
+    })
+    .overrideGuard(JwtAuthGuard)
+    .useValue({ canActivate: () => true })
+    .overrideGuard(RolesGuard)
+    .useValue({ canActivate: () => true })
+    .compile()
+
+    controller = module.get<ProductsController>(ProductsController)
+    service = module.get<ProductsService>(ProductsService)
+  })
+
+  it('should get products with role-based filtering', async () => {
+    const mockRequest = {
+      user: { id: 'user-123', role: UserRole.CUSTOMER }
+    }
+    const mockProducts = {
+      products: [{ id: '1', name: 'Product 1' }],
+      pagination: { page: 1, limit: 10, total: 1, hasNextPage: false }
+    }
+
+    jest.spyOn(service, 'findByRole').mockResolvedValue(mockProducts)
+
+    const result = await controller.getProducts(
+      {},
+      { page: 1, limit: 10 },
+      mockRequest as any
+    )
+
+    expect(result).toEqual(mockProducts)
+    expect(service.findByRole).toHaveBeenCalledWith(
+      {},
+      { page: 1, limit: 10 },
+      UserRole.CUSTOMER
+    )
+  })
+})
+```
+
+#### Integration Testing with Test Database
+
+**Database Integration Testing**
+```typescript
+describe('ProductsController (Integration)', () => {
+  let app: INestApplication
+  let productRepository: Repository<Product>
+  let userRepository: Repository<User>
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'sqlite',
+          database: ':memory:',
+          entities: [User, Product, Category],
+          synchronize: true
+        }),
+        TypeOrmModule.forFeature([User, Product, Category]),
+        ProductsModule,
+        AuthModule
+      ]
+    }).compile()
+
+    app = moduleFixture.createNestApplication()
+    await app.init()
+
+    productRepository = moduleFixture.get<Repository<Product>>(
+      getRepositoryToken(Product)
+    )
+    userRepository = moduleFixture.get<Repository<User>>(
+      getRepositoryToken(User)
+    )
+  })
+
+  beforeEach(async () => {
+    await productRepository.clear()
+    await userRepository.clear()
+    
+    // Seed test data
+    await this.seedTestData()
+  })
+
+  it('should return customer-visible products only', async () => {
+    const customerToken = await this.getCustomerToken()
+
+    const response = await request(app.getHttpServer())
+      .get('/api/products')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200)
+
+    expect(response.body.products).toHaveLength(2) // Only active products
+    response.body.products.forEach(product => {
+      expect(product.isActive).toBe(true)
+      expect(product.stockQuantity).toBeGreaterThan(0)
+    })
+  })
+
+  it('should return seller-specific products for seller', async () => {
+    const sellerToken = await this.getSellerToken()
+
+    const response = await request(app.getHttpServer())
+      .get('/api/products')
+      .set('Authorization', `Bearer ${sellerToken}`)
+      .expect(200)
+
+    expect(response.body.products).toHaveLength(1) // Only seller's products
+    expect(response.body.products[0].sellerId).toBe(this.testSellerId)
+  })
+
+  private async seedTestData() {
+    // Create test users and products
+    const customer = await userRepository.save({
+      email: 'customer@test.com',
+      password: 'hashedpassword',
+      name: 'Test Customer',
+      role: UserRole.CUSTOMER
+    })
+
+    const seller = await userRepository.save({
+      email: 'seller@test.com',
+      password: 'hashedpassword',
+      name: 'Test Seller',
+      role: UserRole.SELLER,
+      isApproved: true
+    })
+
+    await productRepository.save([
+      {
+        name: 'Active Product 1',
+        price: 100,
+        stockQuantity: 10,
+        isActive: true,
+        sellerId: seller.id
+      },
+      {
+        name: 'Active Product 2',
+        price: 200,
+        stockQuantity: 5,
+        isActive: true,
+        sellerId: seller.id
+      },
+      {
+        name: 'Inactive Product',
+        price: 150,
+        stockQuantity: 0,
+        isActive: false,
+        sellerId: seller.id
+      }
+    ])
+
+    this.testSellerId = seller.id
+  }
+})
+```
+
+#### Property-Based Testing Implementation
 
 **Property Test Examples with Required Tags**
 ```typescript
 describe('Customer Backend API Property Tests', () => {
   
-  it('Cart total calculation consistency', () => {
+  it('Cart total calculation consistency across roles', () => {
     fc.assert(fc.property(
       fc.array(cartItemGenerator, { minLength: 1, maxLength: 20 }),
       (cartItems) => {
@@ -1643,41 +2473,35 @@ describe('Customer Backend API Property Tests', () => {
     ), { numRuns: 100 })
   })
   
-  it('Registration input validation consistency', () => {
+  it('Role-based product filtering consistency', () => {
     fc.assert(fc.property(
-      customerDataGenerator,
-      (customerData) => {
-        // Feature: customer-backend-api, Property 3: Registration input validation
-        const validationResult = validateRegistrationData(customerData)
+      fc.array(productGenerator, { minLength: 5, maxLength: 50 }),
+      fc.constantFrom(UserRole.CUSTOMER, UserRole.SELLER, UserRole.SUPER_ADMIN),
+      (products, userRole) => {
+        // Feature: customer-backend-api, Property 15: Product listing response format
+        const filteredProducts = applyRoleBasedFiltering(products, userRole)
         
-        // Valid data should always pass validation
-        expect(validationResult.isValid).toBe(true)
-        expect(validationResult.errors).toHaveLength(0)
+        switch (userRole) {
+          case UserRole.CUSTOMER:
+            filteredProducts.forEach(product => {
+              expect(product.isActive).toBe(true)
+              expect(product.stockQuantity).toBeGreaterThan(0)
+            })
+            break
+          case UserRole.SELLER:
+            // Seller sees their own products regardless of status
+            expect(filteredProducts.length).toBeLessThanOrEqual(products.length)
+            break
+          case UserRole.SUPER_ADMIN:
+            // Admin sees all products
+            expect(filteredProducts.length).toBe(products.length)
+            break
+        }
       }
     ), { numRuns: 100 })
   })
   
-  it('JSON serialization round-trip integrity', () => {
-    fc.assert(fc.property(
-      fc.record({
-        products: fc.array(productGenerator),
-        pagination: fc.record({
-          page: fc.integer({ min: 1, max: 100 }),
-          limit: fc.integer({ min: 1, max: 100 }),
-          total: fc.integer({ min: 0, max: 10000 })
-        })
-      }),
-      (apiResponse) => {
-        // Feature: customer-backend-api, Property 31: Serialization round-trip integrity
-        const serialized = JSON.stringify(apiResponse)
-        const parsed = JSON.parse(serialized)
-        
-        expect(parsed).toEqual(apiResponse)
-      }
-    ), { numRuns: 100 })
-  })
-  
-  it('Order splitting for multi-seller carts', () => {
+  it('Order splitting preserves item integrity', () => {
     fc.assert(fc.property(
       fc.array(cartItemGenerator, { minLength: 2, maxLength: 10 }),
       (cartItems) => {
@@ -1701,135 +2525,74 @@ describe('Customer Backend API Property Tests', () => {
       }
     ), { numRuns: 100 })
   })
-})
-```
 
-#### Unit Testing Strategy
-
-**Service Layer Testing**
-```typescript
-describe('AuthenticationService', () => {
-  let authService: AuthenticationService
-  let mockUserRepository: jest.Mocked<UserRepository>
-  let mockHashService: jest.Mocked<HashService>
-  
-  beforeEach(() => {
-    mockUserRepository = createMockUserRepository()
-    mockHashService = createMockHashService()
-    authService = new AuthenticationService(mockUserRepository, mockHashService)
-  })
-  
-  it('should create user account for valid registration data', async () => {
-    const registrationData = {
-      name: 'John Doe',
-      email: 'john@example.com',
-      password: 'SecurePass123'
-    }
-    
-    mockUserRepository.findByEmail.mockResolvedValue(null)
-    mockHashService.hash.mockResolvedValue('hashedPassword')
-    mockUserRepository.create.mockResolvedValue({ id: 'user123', ...registrationData })
-    
-    const result = await authService.register(registrationData)
-    
-    expect(result.success).toBe(true)
-    expect(mockHashService.hash).toHaveBeenCalledWith('SecurePass123', 12)
-    expect(mockUserRepository.create).toHaveBeenCalledWith({
-      ...registrationData,
-      password: 'hashedPassword'
-    })
-  })
-  
-  it('should reject registration for existing email', async () => {
-    const registrationData = {
-      name: 'Jane Doe',
-      email: 'existing@example.com',
-      password: 'SecurePass123'
-    }
-    
-    mockUserRepository.findByEmail.mockResolvedValue({ id: 'existing', email: 'existing@example.com' })
-    
-    await expect(authService.register(registrationData))
-      .rejects.toThrow('Email already registered')
-    
-    expect(mockUserRepository.create).not.toHaveBeenCalled()
-  })
-})
-```
-
-#### Integration Testing Framework
-
-**API Endpoint Testing**
-```typescript
-describe('Product API Integration Tests', () => {
-  let app: Express
-  let testDb: TestDatabase
-  
-  beforeAll(async () => {
-    testDb = await setupTestDatabase()
-    app = createTestApp(testDb)
-  })
-  
-  afterAll(async () => {
-    await testDb.cleanup()
-  })
-  
-  beforeEach(async () => {
-    await testDb.seed()
-  })
-  
-  afterEach(async () => {
-    await testDb.reset()
-  })
-  
-  it('should return paginated products with correct format', async () => {
-    const response = await request(app)
-      .get('/api/products')
-      .query({ page: 1, limit: 10 })
-      .expect(200)
-    
-    expect(response.body).toMatchObject({
-      products: expect.arrayContaining([
-        expect.objectContaining({
-          id: expect.any(String),
-          name: expect.any(String),
-          price: expect.any(Number),
-          images: expect.any(Array),
-          availability: expect.any(Boolean)
-        })
-      ]),
-      pagination: expect.objectContaining({
-        page: 1,
-        limit: 10,
-        total: expect.any(Number),
-        hasNextPage: expect.any(Boolean)
-      })
-    })
-  })
-  
-  it('should enforce pagination limits', async () => {
-    const response = await request(app)
-      .get('/api/products')
-      .query({ page: 1, limit: 150 }) // Exceeds maximum of 100
-      .expect(200)
-    
-    expect(response.body.products.length).toBeLessThanOrEqual(100)
-    expect(response.body.pagination.limit).toBe(100)
+  it('JWT token role claims consistency', () => {
+    fc.assert(fc.property(
+      fc.record({
+        id: fc.uuid(),
+        email: fc.emailAddress(),
+        role: fc.constantFrom(UserRole.CUSTOMER, UserRole.SELLER, UserRole.SUPER_ADMIN),
+        permissions: fc.array(fc.string(), { minLength: 0, maxLength: 10 })
+      }),
+      (userData) => {
+        // Feature: customer-backend-api, Property 12: JWT token structure and expiration
+        const token = generateJWTToken(userData)
+        const decoded = verifyJWTToken(token)
+        
+        expect(decoded.sub).toBe(userData.id)
+        expect(decoded.role).toBe(userData.role)
+        expect(decoded.permissions).toEqual(userData.permissions)
+        expect(decoded.exp).toBeGreaterThan(Date.now() / 1000)
+      }
+    ), { numRuns: 100 })
   })
 })
 ```
 
 #### Performance and Load Testing
 
-**Load Testing Configuration**
+**NestJS Performance Testing**
 ```typescript
 describe('Performance Tests', () => {
-  it('should handle concurrent cart operations', async () => {
-    const userId = 'test-user-123'
-    const concurrentOperations = 50
-    
-    const operations = Array(concurrentOperations).fill(null).map(async (_, index) => {
-      return request(app)
+  let app: INestApplication
+
+  beforeAll(async () => {
+    const moduleFixture = await Test.createTestingModule({
+      imports: [AppModule]
+    }).compile()
+
+    app = moduleFixture.createNestApplication()
+    await app.init()
+  })
+
+  it('should handle concurrent requests efficiently', async () => {
+    const concurrentRequests = 100
+    const startTime = Date.now()
+
+    const requests = Array(concurrentRequests).fill(null).map(() =>
+      request(app.getHttpServer())
+        .get('/api/products')
+        .set('Authorization', `Bearer ${validToken}`)
+    )
+
+    const responses = await Promise.all(requests)
+    const endTime = Date.now()
+
+    // All requests should succeed
+    responses.forEach(response => {
+      expect(response.status).toBe(200)
+    })
+
+    // Average response time should be under 200ms
+    const averageResponseTime = (endTime - startTime) / concurrentRequests
+    expect(averageResponseTime).toBeLessThan(200)
+  })
+
+  it('should maintain database connection pool under load', async () => {
+    const heavyRequests = 50
+
+    const requests = Array(heavyRequests).fill(null).map(async (_, index) => {
+      return request(app.getHttpServer())
         .post('/api/cart/items')
         .set('Authorization', `Bearer ${validToken}`)
         .send({
@@ -1837,105 +2600,13 @@ describe('Performance Tests', () => {
           quantity: Math.floor(Math.random() * 5) + 1
         })
     })
-    
-    const results = await Promise.all(operations)
-    
-    // All operations should succeed
-    results.forEach(result => {
-      expect(result.status).toBe(200)
+
+    const responses = await Promise.all(requests)
+
+    // All database operations should succeed
+    responses.forEach(response => {
+      expect([200, 201]).toContain(response.status)
     })
-    
-    // Final cart should contain all items
-    const finalCart = await request(app)
-      .get('/api/cart')
-      .set('Authorization', `Bearer ${validToken}`)
-      .expect(200)
-    
-    expect(finalCart.body.items).toHaveLength(concurrentOperations)
-  })
-  
-  it('should maintain response time under load', async () => {
-    const startTime = Date.now()
-    const requests = 100
-    
-    const operations = Array(requests).fill(null).map(() => 
-      request(app)
-        .get('/api/products')
-        .expect(200)
-    )
-    
-    await Promise.all(operations)
-    
-    const totalTime = Date.now() - startTime
-    const averageResponseTime = totalTime / requests
-    
-    // 95% of requests should be under 200ms
-    expect(averageResponseTime).toBeLessThan(200)
   })
 })
 ```
-
-#### Security Testing Integration
-
-**Security Vulnerability Testing**
-```typescript
-describe('Security Tests', () => {
-  it('should prevent SQL injection in search queries', async () => {
-    const maliciousQueries = [
-      "'; DROP TABLE customers; --",
-      "1' OR '1'='1",
-      "admin'/*",
-      "1; DELETE FROM orders; --"
-    ]
-    
-    for (const query of maliciousQueries) {
-      const response = await request(app)
-        .get('/api/products/search')
-        .query({ q: query })
-        .expect(400)
-      
-      expect(response.body.error.code).toBe('VALIDATION_ERROR')
-    }
-    
-    // Verify database integrity after malicious attempts
-    const productCount = await testDb.query('SELECT COUNT(*) FROM products')
-    expect(productCount[0].count).toBeGreaterThan(0)
-  })
-  
-  it('should enforce authentication on protected endpoints', async () => {
-    const protectedEndpoints = [
-      { method: 'get', path: '/api/cart' },
-      { method: 'post', path: '/api/cart/items' },
-      { method: 'post', path: '/api/orders' },
-      { method: 'get', path: '/api/orders/history' }
-    ]
-    
-    for (const endpoint of protectedEndpoints) {
-      await request(app)
-        [endpoint.method](endpoint.path)
-        .expect(401)
-    }
-  })
-  
-  it('should implement proper rate limiting', async () => {
-    const email = 'test@example.com'
-    const invalidPassword = 'wrongpassword'
-    
-    // Make 5 failed login attempts
-    for (let i = 0; i < 5; i++) {
-      await request(app)
-        .post('/api/auth/login')
-        .send({ email, password: invalidPassword })
-        .expect(401)
-    }
-    
-    // 6th attempt should be rate limited
-    await request(app)
-      .post('/api/auth/login')
-      .send({ email, password: invalidPassword })
-      .expect(429)
-  })
-})
-```
-
-This comprehensive testing strategy ensures that the Customer Backend API maintains high quality, security, and performance standards while providing mathematical guarantees of correctness through property-based testing. The combination of unit tests for detailed validation, integration tests for system behavior, property tests for universal correctness, and security tests for vulnerability prevention creates a robust quality assurance framework that supports confident deployment and maintenance of the system.
