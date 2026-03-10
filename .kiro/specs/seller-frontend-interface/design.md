@@ -98,21 +98,382 @@ graph TD
     I --> J
     
     J --> K[Unified State Store]
-    J --> L[Unified API Client]
-    
-    L --> M[NestJS Backend API]
-    K --> N[Role-Based Data]
 ```
 
-### Component Architecture
+### Technology Stack
 
-The seller interface leverages a unified component architecture with role-based variations:
+#### Core Framework & Runtime
+- **Next.js 14+**: Full-stack React framework with App Router, Server Components, and Server Actions
+- **React 18+**: Component-based UI with concurrent features and streaming SSR
+- **TypeScript**: Type-safe development with enhanced IDE support and compile-time validation
+- **Node.js**: Server-side runtime for API routes and middleware
 
-- **Shared Layout System**: Common header, navigation, and layout components with seller-specific styling
-- **Role-Based Routing**: Next.js App Router with `/seller/*` routes protected by middleware
-- **Unified State Management**: Single Zustand store with seller-specific data sections
-- **Shared Component Library**: Reusable UI components with role-based props and styling
-- **Authentication Integration**: NextAuth.js or custom JWT handling with role validation
+#### State Management & Data Fetching
+- **Zustand**: Lightweight global state management for user session and seller-specific state
+- **TanStack Query (React Query)**: Server state management, caching, and synchronization
+- **React Hook Form**: Form state management with validation and performance optimization
+- **SWR**: Alternative data fetching with built-in caching (where TanStack Query isn't used)
+
+#### Styling & UI Components
+- **Tailwind CSS**: Utility-first CSS framework for rapid development and consistent design
+- **shadcn/ui**: High-quality, accessible React components built on Radix UI primitives
+- **Headless UI**: Unstyled, accessible UI components for custom implementations
+- **Framer Motion**: Animation library for smooth interactions and page transitions
+- **Lucide React**: Modern icon library with consistent design
+
+#### Authentication & Security
+- **NextAuth.js**: Complete authentication solution with JWT and session management
+- **Custom JWT Handling**: Alternative JWT implementation with role-based claims
+- **Next.js Middleware**: Route protection and role-based access control
+- **bcrypt**: Password hashing for secure authentication
+
+#### Charts & Analytics
+- **Recharts**: Composable charting library for React
+- **Chart.js**: Alternative charting solution with React wrapper
+- **Date-fns**: Date manipulation and formatting utilities
+
+## Components and Interfaces
+
+### Next.js App Router Pages for Sellers
+
+#### 1. Seller Route Group - `app/seller/`
+```typescript
+// app/seller/layout.tsx
+interface SellerLayoutProps {
+  children: React.ReactNode
+}
+
+export default function SellerLayout({ children }: SellerLayoutProps) {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <SellerHeader />
+      <div className="flex">
+        <SellerSidebar />
+        <main className="flex-1 p-6">
+          {children}
+        </main>
+      </div>
+    </div>
+  )
+}
+
+// app/seller/page.tsx - Dashboard
+export default function SellerDashboard() {
+  return (
+    <>
+      <DashboardMetrics />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <RecentOrders />
+        <TopProducts />
+      </div>
+    </>
+  )
+}
+
+// app/seller/products/page.tsx - Product Management
+interface ProductManagementPageProps {
+  searchParams: {
+    category?: string
+    status?: string
+    search?: string
+    page?: string
+  }
+}
+
+export default function ProductManagementPage({ searchParams }: ProductManagementPageProps) {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Products</h1>
+        <Button asChild>
+          <Link href="/seller/products/new">Add Product</Link>
+        </Button>
+      </div>
+      <ProductFilters />
+      <ProductTable searchParams={searchParams} />
+    </div>
+  )
+}
+```
+
+#### 2. Seller Authentication with NextAuth.js
+```typescript
+// components/seller/auth/SellerLoginForm.tsx
+interface SellerLoginFormProps {
+  callbackUrl?: string
+  onSuccess?: (user: Seller) => void
+}
+
+interface SellerLoginFormData {
+  email: string
+  password: string
+  rememberMe: boolean
+}
+
+export function SellerLoginForm({ callbackUrl, onSuccess }: SellerLoginFormProps) {
+  const { register, handleSubmit, formState: { errors } } = useForm<SellerLoginFormData>()
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  
+  const onSubmit = async (data: SellerLoginFormData) => {
+    const result = await signIn('credentials', {
+      email: data.email,
+      password: data.password,
+      redirect: false,
+    })
+    
+    if (result?.ok && session?.user?.role === 'seller') {
+      onSuccess?.(session.user as Seller)
+      router.push(callbackUrl || '/seller/dashboard')
+    }
+  }
+  
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <Input
+        {...register('email', { required: 'Email is required' })}
+        type="email"
+        placeholder="Business email address"
+        error={errors.email?.message}
+      />
+      <Input
+        {...register('password', { required: 'Password is required' })}
+        type="password"
+        placeholder="Password"
+        error={errors.password?.message}
+      />
+      <Button type="submit" className="w-full">
+        Sign In to Dashboard
+      </Button>
+    </form>
+  )
+}
+```
+
+#### 3. Product Management Components with Server Components
+```typescript
+// components/seller/products/ProductForm.tsx
+interface ProductFormProps {
+  product?: Product
+  onSubmit: (data: ProductFormData) => Promise<void>
+}
+
+interface ProductFormData {
+  name: string
+  description: string
+  price: number
+  categoryId: string
+  stockQuantity: number
+  images: File[]
+}
+
+export function ProductForm({ product, onSubmit }: ProductFormProps) {
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<ProductFormData>({
+    defaultValues: product ? {
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      categoryId: product.categoryId,
+      stockQuantity: product.stockQuantity,
+    } : undefined
+  })
+  
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <Input
+            {...register('name', { required: 'Product name is required' })}
+            label="Product Name"
+            error={errors.name?.message}
+          />
+          
+          <Textarea
+            {...register('description', { required: 'Description is required' })}
+            label="Description"
+            rows={4}
+            error={errors.description?.message}
+          />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              {...register('price', { 
+                required: 'Price is required',
+                min: { value: 0.01, message: 'Price must be greater than 0' }
+              })}
+              type="number"
+              step="0.01"
+              label="Price"
+              error={errors.price?.message}
+            />
+            
+            <Input
+              {...register('stockQuantity', { 
+                required: 'Stock quantity is required',
+                min: { value: 0, message: 'Stock cannot be negative' }
+              })}
+              type="number"
+              label="Stock Quantity"
+              error={errors.stockQuantity?.message}
+            />
+          </div>
+        </div>
+        
+        <div className="space-y-6">
+          <CategorySelect
+            {...register('categoryId', { required: 'Category is required' })}
+            error={errors.categoryId?.message}
+          />
+          
+          <ImageUpload
+            {...register('images')}
+            existingImages={product?.images}
+            maxFiles={5}
+          />
+        </div>
+      </div>
+      
+      <div className="flex justify-end space-x-4">
+        <Button type="button" variant="outline" asChild>
+          <Link href="/seller/products">Cancel</Link>
+        </Button>
+        <Button type="submit">
+          {product ? 'Update Product' : 'Create Product'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// app/seller/products/[id]/page.tsx - Server Component
+export default async function EditProductPage({ params }: { params: { id: string } }) {
+  const product = await getSellerProduct(params.id) // Server-side data fetching
+  
+  if (!product) {
+    notFound()
+  }
+  
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Edit Product</h1>
+        <p className="text-gray-600">Update your product information</p>
+      </div>
+      <ProductForm product={product} onSubmit={updateProduct} />
+    </div>
+  )
+}
+```
+
+#### 4. Order Management with Zustand State Management
+```typescript
+// store/sellerStore.ts
+interface SellerState {
+  orders: Order[]
+  products: Product[]
+  analytics: SellerAnalytics | null
+  isLoading: boolean
+  error: string | null
+}
+
+interface SellerActions {
+  fetchOrders: () => Promise<void>
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>
+  fetchProducts: () => Promise<void>
+  createProduct: (productData: ProductFormData) => Promise<void>
+  updateProduct: (id: string, productData: ProductFormData) => Promise<void>
+  deleteProduct: (id: string) => Promise<void>
+  fetchAnalytics: (dateRange: DateRange) => Promise<void>
+}
+
+export const useSellerStore = create<SellerState & SellerActions>((set, get) => ({
+  orders: [],
+  products: [],
+  analytics: null,
+  isLoading: false,
+  error: null,
+  
+  fetchOrders: async () => {
+    set({ isLoading: true, error: null })
+    try {
+      const orders = await sellerAPI.getOrders()
+      set({ orders, isLoading: false })
+    } catch (error) {
+      set({ error: error.message, isLoading: false })
+    }
+  },
+  
+  updateOrderStatus: async (orderId: string, status: OrderStatus) => {
+    try {
+      const updatedOrder = await sellerAPI.updateOrderStatus(orderId, status)
+      set((state) => ({
+        orders: state.orders.map(order => 
+          order.id === orderId ? updatedOrder : order
+        )
+      }))
+      toast.success('Order status updated successfully')
+    } catch (error) {
+      toast.error('Failed to update order status')
+    }
+  },
+  
+  createProduct: async (productData: ProductFormData) => {
+    set({ isLoading: true })
+    try {
+      const newProduct = await sellerAPI.createProduct(productData)
+      set((state) => ({
+        products: [...state.products, newProduct],
+        isLoading: false
+      }))
+      toast.success('Product created successfully')
+    } catch (error) {
+      set({ error: error.message, isLoading: false })
+      toast.error('Failed to create product')
+    }
+  },
+}))
+
+// components/seller/orders/OrderCard.tsx
+export function OrderCard({ order }: { order: Order }) {
+  const { updateOrderStatus } = useSellerStore()
+  
+  return (
+    <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h3 className="font-semibold text-lg">Order #{order.orderNumber}</h3>
+          <p className="text-gray-600">{order.customer.name}</p>
+          <p className="text-sm text-gray-500">{formatDate(order.createdAt)}</p>
+        </div>
+        <div className="text-right">
+          <p className="font-semibold text-lg">${order.total}</p>
+          <OrderStatusBadge status={order.status} />
+        </div>
+      </div>
+      
+      <div className="space-y-2 mb-4">
+        {order.items.map((item) => (
+          <div key={item.id} className="flex justify-between text-sm">
+            <span>{item.product.name} × {item.quantity}</span>
+            <span>${item.totalPrice}</span>
+          </div>
+        ))}
+      </div>
+      
+      <div className="flex justify-between items-center">
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/seller/orders/${order.id}`}>View Details</Link>
+        </Button>
+        
+        <OrderStatusSelect
+          currentStatus={order.status}
+          onStatusChange={(status) => updateOrderStatus(order.id, status)}
+        />
+      </div>
+    </div>
+  )
+}
+```
 
 ## User Interface Design
 
