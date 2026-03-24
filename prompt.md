@@ -1,0 +1,1 @@
+for backend i use nestjs and frontend i use frontend i use nextjs and database i mysql and for store the image i use cloudinary and for api documentation i
